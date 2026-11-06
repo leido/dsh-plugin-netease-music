@@ -1,0 +1,16 @@
+# dsh-plugin-netease-music bundle patch.
+# Inserts one Host row. The row name equals the package name, which is also the
+# browser module id, so the client half is discovered by the same entry.
+- insert:
+    - id: netease-music
+      name: dsh-plugin-netease-music
+      config:
+        # ncm-cli executable. Use an absolute path when the GUI's PATH differs
+        # from your shell's (common on macOS when installed via nvm/pnpm).
+        cliPath: ncm-cli
+        # Upper bound for one CLI invocation, in milliseconds.
+        timeoutMs: 20000
+        # Expose search / play / control to the Agent as tools.
+        # Set to false if a model provider ever rejects a tool schema: the UI
+        # keeps working, only the model-facing surface disappears.
+        toolsEnabled: true

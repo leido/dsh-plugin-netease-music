@@ -1,0 +1,9 @@
+node_modules/
+*.tgz
+.dev/
+.verify/
+.replica/
+.local/
+.test*/
+.npm-cache/
+*.log
