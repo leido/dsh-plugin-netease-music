@@ -75,6 +75,8 @@ const initial: Snapshot = {
   searchError: null,
   searchedKeyword: '',
   playback: null,
+  queue: { items: [], total: 0 },
+  queueOpen: false,
   busy: null,
   notice: null,
   error: null,
@@ -273,6 +275,55 @@ async function installCli(): Promise<void> {
 }
 
 /**
+ * Refresh the playback queue.
+ * @returns void
+ */
+async function refreshQueue(): Promise<void> {
+  try {
+    setState({ queue: await api('queue') })
+  } catch {
+    setState({ queue: { items: [], total: 0 } })
+  }
+}
+
+/**
+ * Add one song to the queue (default: after the current track).
+ * @param song chosen result.
+ * @param next insert right after the current track.
+ * @returns void
+ */
+async function enqueueSong(song: Song, next: boolean): Promise<void> {
+  setState({ busy: song.encryptedId ?? song.name, notice: null })
+  try {
+    const result = await api('queue/add', {
+      method: 'POST',
+      body: JSON.stringify({ encryptedId: song.encryptedId, originalId: song.originalId, next }),
+    })
+    setState({ busy: null, error: null, notice: result?.message ?? (next ? '已插入下一首' : '已加入队列') })
+    scheduleNoticeClear()
+    await refreshQueue()
+  } catch (error) {
+    setState({ busy: null, error: error instanceof Error ? error.message : String(error) })
+  }
+}
+
+/**
+ * Clear the whole queue.
+ * @returns void
+ */
+async function clearQueue(): Promise<void> {
+  setState({ busy: 'queue-clear' })
+  try {
+    await api('queue/clear', { method: 'POST', body: '{}' })
+    setState({ busy: null, error: null, notice: '队列已清空' })
+    scheduleNoticeClear()
+    await refreshQueue()
+  } catch (error) {
+    setState({ busy: null, error: error instanceof Error ? error.message : String(error) })
+  }
+}
+
+/**
  * Playback status labels the CLI reports.
  */
 const STATUS_LABELS: Record<string, string> = { playing: '播放中', paused: '已暂停', stopped: '未播放' }
@@ -404,7 +455,13 @@ select.ncm-input { padding-right: 8px; }
 .ncm-search .ncm-btn { height: 38px; }
 
 .ncm-results { flex: 1 1 auto; min-height: 120px; max-height: min(520px, 48vh); overflow: auto; border: 1px solid var(--ncm-border-soft); border-radius: var(--dsw-radius-lg, 12px); background: var(--ncm-card); }
-.ncm-item { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; border: none; background: transparent; color: inherit; padding: 8px 12px; cursor: pointer; font-size: 13px; font-family: inherit; transition: background .12s ease; }
+.ncm-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 8px 12px; font-size: 13px; transition: background .12s ease; }
+.ncm-item:hover { background: var(--ncm-hover); }
+.ncm-item:hover .ncm-item-actions { opacity: 1; }
+.ncm-item-actions { display: inline-flex; gap: 2px; opacity: 0; transition: opacity .12s ease; }
+.ncm-mini { width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border: none; border-radius: var(--dsw-radius-sm, 6px); background: transparent; color: var(--ncm-muted); cursor: pointer; font-size: 11px; }
+.ncm-mini:hover:not(:disabled) { background: var(--ncm-hover); color: var(--ncm-fg); }
+.ncm-mini:disabled { opacity: .4; cursor: default; }
 .ncm-item + .ncm-item { box-shadow: inset 0 1px 0 var(--ncm-border-soft); }
 .ncm-item:hover:not(:disabled) { background: var(--ncm-hover); }
 .ncm-item:disabled { opacity: .42; cursor: default; }
@@ -418,6 +475,21 @@ span.ncm-cover { display: inline-flex; align-items: center; justify-content: cen
 .ncm-empty { height: 100%; min-height: 180px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font-size: 12px; color: var(--ncm-faint); }
 .ncm-empty-mark { font-size: 22px; opacity: .5; }
 
+.ncm-queue-toggle { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 9px; border: none; border-radius: 999px; background: var(--ncm-soft); color: var(--ncm-muted); cursor: pointer; font-size: 11px; font-family: inherit; }
+.ncm-queue-toggle:hover { color: var(--ncm-fg); background: var(--ncm-hover); }
+.ncm-queue-toggle-active { color: var(--ncm-fg); background: var(--ncm-hover); }
+.ncm-queue {
+  position: sticky; bottom: 50px; z-index: 2; margin: 0 0 8px; max-height: min(300px, 36vh); overflow: auto;
+  border: 1px solid var(--ncm-border-soft); border-radius: var(--dsw-radius-lg, 12px); background: var(--ncm-card);
+}
+.ncm-queue-head { position: sticky; top: 0; display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: var(--ncm-card); border-bottom: 1px solid var(--ncm-border-soft); }
+.ncm-queue-head span { font-size: 11px; line-height: 18px; color: var(--ncm-faint); }
+.ncm-queue-head button { border: none; background: transparent; color: var(--ncm-muted); cursor: pointer; font-size: 11px; font-family: inherit; padding: 0; }
+.ncm-queue-head button:hover { color: var(--ncm-error); }
+.ncm-queue-row { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; border: none; background: transparent; color: inherit; padding: 6px 12px; cursor: pointer; font-size: 12px; font-family: inherit; }
+.ncm-queue-row:hover { background: var(--ncm-hover); }
+.ncm-queue-row-current { color: var(--ncm-accent); }
+.ncm-queue-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ncm-player { position: sticky; bottom: 0; z-index: 2; flex: none; display: flex; align-items: center; gap: 6px; border: 1px solid var(--ncm-border-soft); border-radius: var(--dsw-radius-lg, 12px); padding: 7px 10px; background: var(--ncm-card); }
 .ncm-player button { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--dsw-radius-sm, 6px); border: none; background: transparent; color: var(--ncm-muted); cursor: pointer; font-size: 12px; transition: background .12s ease, color .12s ease; }
 .ncm-player button:hover { background: var(--ncm-hover); color: var(--ncm-fg); }
@@ -510,10 +582,11 @@ function MusicPage() {
   useEffect(() => {
     if (state.status === null && !state.statusLoading) void refreshStatus()
     void refreshPlayback()
+    void refreshQueue()
     // The CLI's state is the single source of truth for playback; poll it so
     // the transport bar keeps up with what the player service is doing,
     // including songs started elsewhere (Agent tools, another tab).
-    const timer = setInterval(() => { void refreshPlayback() }, 2000)
+    const timer = setInterval(() => { void refreshPlayback(); void refreshQueue() }, 2000)
     return () => clearInterval(timer)
   }, [])
 
@@ -563,13 +636,7 @@ function MusicPage() {
             </div>
           )}
           {state.results.map((song, index) => (
-            <button
-              key={`${song.encryptedId ?? song.name}-${index}`}
-              className="ncm-item"
-              disabled={!song.playable || state.busy !== null}
-              title={song.playable ? '播放' : '不可播放'}
-              onClick={() => { void playSong(song) }}
-            >
+            <div key={`${song.encryptedId ?? song.name}-${index}`} className="ncm-item" style={{ opacity: song.playable ? 1 : 0.42 }}>
               {song.cover === null
                 ? <span className="ncm-cover" aria-hidden="true">♪</span>
                 : <img className="ncm-cover" width={32} height={32} src={song.cover} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.visibility = 'hidden' }} />}
@@ -577,8 +644,15 @@ function MusicPage() {
                 <div className="ncm-item-name">{song.name}</div>
                 <div className="ncm-item-sub">{song.artists.join(' / ')}{song.album === '' ? '' : ` · ${song.album}`}</div>
               </div>
-              <span className="ncm-dur">{state.busy === song.encryptedId ? '…' : formatDuration(song.durationMs)}</span>
-            </button>
+              <span className="ncm-dur">{formatDuration(song.durationMs)}</span>
+              {song.playable && (
+                <span className="ncm-item-actions">
+                  <button className="ncm-mini" title="播放" disabled={state.busy !== null} onClick={() => { void playSong(song) }}>▶</button>
+                  <button className="ncm-mini" title="下一首播放" disabled={state.busy !== null} onClick={() => { void enqueueSong(song, true) }}>↵</button>
+                  <button className="ncm-mini" title="加入队列" disabled={state.busy !== null} onClick={() => { void enqueueSong(song, false) }}>＋</button>
+                </span>
+              )}
+            </div>
           ))}
         </div>
 
@@ -589,13 +663,33 @@ function MusicPage() {
           </div>
         )}
 
+        {state.queueOpen && (
+          <div className="ncm-queue" style={showSettings ? { display: 'none' } : undefined}>
+            <div className="ncm-queue-head">
+              <span>播放队列 · {state.queue.total} 首</span>
+              <button onClick={() => { void clearQueue() }} disabled={state.busy !== null}>清空</button>
+            </div>
+            {state.queue.items.length === 0 && <div className="ncm-empty" style={{ minHeight: 80 }}>队列为空，在搜索结果上点「+」加入</div>}
+            {state.queue.items.map((entry, index) => (
+              <div key={index} className={`ncm-queue-row${entry.current ? ' ncm-queue-row-current' : ''}`}>
+                <span style={{ width: 18, textAlign: 'right', color: 'var(--ncm-faint)' }}>{entry.index ?? index + 1}</span>
+                <span className="ncm-queue-label">{entry.label || '(未知曲目)'}</span>
+                {entry.current && <span style={{ fontSize: 11 }}>▶</span>}
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="ncm-player" style={showSettings ? { display: 'none' } : undefined}>
-          <button title="上一首" onClick={() => { void runControl('prev') }}>⏮</button>
           <button className="ncm-play" title={playing ? '暂停' : '播放'} onClick={() => { void runControl(playing ? 'pause' : 'resume') }}>{playing ? '⏸' : '▶'}</button>
-          <button title="下一首" onClick={() => { void runControl('next') }}>⏭</button>
-          <button title="音量 -10" onClick={() => { void runControl('volume', Math.max(0, Number(current?.volume ?? 60) - 10)) }}>−</button>
-          <button title="音量 +10" onClick={() => { void runControl('volume', Math.min(100, Number(current?.volume ?? 60) + 10)) }}>＋</button>
-          <span className="ncm-state">{state.notice !== null ? state.notice : describePlayback(current)}</span>
+          <span className="ncm-state" style={{ marginLeft: 8 }}>{state.notice !== null ? state.notice : describePlayback(current)}</span>
+          <button
+            className={`ncm-queue-toggle${state.queueOpen ? ' ncm-queue-toggle-active' : ''}`}
+            title="播放队列"
+            onClick={() => setState({ queueOpen: !state.queueOpen, error: null })}
+          >
+            ☰ {state.queue.total > 0 ? state.queue.total : ''}
+          </button>
         </div>
       </div>
     </div>

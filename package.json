@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-netease-music",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "网易云音乐 for DSH Web UI：用官方 ncm-cli 搜索、播放与控制，含设置页配置与 Agent 工具。",
   "type": "module",
   "main": "lib/index.js",
