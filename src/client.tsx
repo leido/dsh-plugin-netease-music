@@ -375,12 +375,14 @@ select.ncm-input { padding-right: 8px; }
 .ncm-search .ncm-input { flex: 1; height: 38px; }
 .ncm-search .ncm-btn { height: 38px; }
 
-.ncm-results { flex: 0 1 auto; min-height: 0; max-height: 100%; overflow: auto; border: 1px solid var(--ncm-border-soft); border-radius: var(--dsw-radius-lg, 12px); background: var(--ncm-card); }
+.ncm-results { flex: 1 1 auto; min-height: 120px; max-height: min(520px, 48vh); overflow: auto; border: 1px solid var(--ncm-border-soft); border-radius: var(--dsw-radius-lg, 12px); background: var(--ncm-card); }
 .ncm-item { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; border: none; background: transparent; color: inherit; padding: 8px 12px; cursor: pointer; font-size: 13px; font-family: inherit; transition: background .12s ease; }
 .ncm-item + .ncm-item { box-shadow: inset 0 1px 0 var(--ncm-border-soft); }
 .ncm-item:hover:not(:disabled) { background: var(--ncm-hover); }
 .ncm-item:disabled { opacity: .42; cursor: default; }
-.ncm-cover { width: 40px; height: 40px; flex: none; border-radius: var(--dsw-radius-sm, 6px); object-fit: cover; background: var(--ncm-cover); display: flex; align-items: center; justify-content: center; color: var(--ncm-faint); font-size: 15px; }
+.ncm-cover { width: 32px; height: 32px; flex: 0 0 32px; border-radius: var(--dsw-radius-sm, 6px); object-fit: cover; background: var(--ncm-cover); overflow: hidden; }
+img.ncm-cover { display: block; }
+span.ncm-cover { display: inline-flex; align-items: center; justify-content: center; color: var(--ncm-faint); font-size: 13px; }
 .ncm-item-main { flex: 1; min-width: 0; }
 .ncm-item-name { font-size: 13px; line-height: 19px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ncm-item-sub { font-size: 11px; line-height: 17px; color: var(--ncm-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -388,8 +390,7 @@ select.ncm-input { padding-right: 8px; }
 .ncm-empty { height: 100%; min-height: 180px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font-size: 12px; color: var(--ncm-faint); }
 .ncm-empty-mark { font-size: 22px; opacity: .5; }
 
-.ncm-spacer { flex: 1 1 auto; min-height: 0; }
-.ncm-player { display: flex; align-items: center; gap: 6px; border: 1px solid var(--ncm-border-soft); border-radius: var(--dsw-radius-lg, 12px); padding: 7px 10px; background: var(--ncm-card); }
+.ncm-player { position: sticky; bottom: 0; z-index: 2; flex: none; display: flex; align-items: center; gap: 6px; border: 1px solid var(--ncm-border-soft); border-radius: var(--dsw-radius-lg, 12px); padding: 7px 10px; background: var(--ncm-card); }
 .ncm-player button { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--dsw-radius-sm, 6px); border: none; background: transparent; color: var(--ncm-muted); cursor: pointer; font-size: 12px; transition: background .12s ease, color .12s ease; }
 .ncm-player button:hover { background: var(--ncm-hover); color: var(--ncm-fg); }
 .ncm-player button.ncm-play { width: 34px; height: 34px; border-radius: 50%; background: var(--ncm-accent); color: var(--dsw-alias-label-primary-foreground, #fff); }
@@ -538,7 +539,7 @@ function MusicPage() {
             >
               {song.cover === null
                 ? <span className="ncm-cover" aria-hidden="true">♪</span>
-                : <img className="ncm-cover" src={song.cover} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.visibility = 'hidden' }} />}
+                : <img className="ncm-cover" width={32} height={32} src={song.cover} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.visibility = 'hidden' }} />}
               <div className="ncm-item-main">
                 <div className="ncm-item-name">{song.name}</div>
                 <div className="ncm-item-sub">{song.artists.join(' / ')}{song.album === '' ? '' : ` · ${song.album}`}</div>
@@ -554,8 +555,6 @@ function MusicPage() {
             <button className="ncm-back" onClick={() => setState({ error: null })}>关闭</button>
           </div>
         )}
-
-        <div className="ncm-spacer" style={showSettings ? { display: 'none' } : undefined} />
 
         <div className="ncm-player" style={showSettings ? { display: 'none' } : undefined}>
           <button title="上一首" onClick={() => { void runControl('prev') }}>⏮</button>
