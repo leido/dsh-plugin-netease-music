@@ -77,6 +77,7 @@ const initial: Snapshot = {
   playback: null,
   queue: { items: [], total: 0 },
   queueOpen: false,
+  songIndex: {},
   busy: null,
   notice: null,
   error: null,
@@ -181,7 +182,13 @@ async function runSearch(keyword: string): Promise<void> {
   setState({ searching: true, searchError: null, searchedKeyword: trimmed })
   try {
     const data = await api(`search?keyword=${encodeURIComponent(trimmed)}&type=song`)
-    setState({ results: data.items ?? [], searching: false })
+    const index = { ...snapshot.songIndex }
+    for (const song of data.items ?? []) {
+      if (song.encryptedId !== null) {
+        index[String(song.encryptedId).toLowerCase()] = { name: song.name, originalId: song.originalId === null ? null : String(song.originalId) }
+      }
+    }
+    setState({ results: data.items ?? [], searching: false, songIndex: index })
   } catch (error) {
     setState({ searching: false, results: [], searchError: error instanceof Error ? error.message : String(error) })
   }
@@ -202,6 +209,7 @@ async function playSong(song: Song): Promise<void> {
     if (song.encryptedId === null && song.originalId === null) {
       throw new Error('这条结果没有可用的歌曲 ID，无法播放')
     }
+    setState((current) => ({ songIndex: { ...current.songIndex, [String(song.encryptedId).toLowerCase()]: { name: song.name, originalId: song.originalId === null ? null : String(song.originalId) } } }))
     const result = await api('play', {
       method: 'POST',
       body: JSON.stringify({ encryptedId: song.encryptedId, originalId: song.originalId }),
@@ -209,6 +217,44 @@ async function playSong(song: Song): Promise<void> {
     setState({ busy: null, error: null, notice: result?.message ?? `开始播放：${song.name}` })
     scheduleNoticeClear()
     await refreshPlayback()
+  } catch (error) {
+    setState({ busy: null, error: error instanceof Error ? error.message : String(error) })
+  }
+}
+
+/**
+ * Play button: resume when paused, start the queue's current track when
+ * stopped (`resume` refuses when nothing is playing), pause when playing.
+ * @returns void
+ */
+async function playOrResume(): Promise<void> {
+  const current = snapshot.playback?.state ?? snapshot.playback ?? null
+  if (current?.status === 'playing') {
+    await runControl('pause')
+    return
+  }
+  if (current?.status === 'paused') {
+    await runControl('resume')
+    return
+  }
+  // Stopped: find the queue's current entry and play it by id.
+  const entry = snapshot.queue.items.find((item) => item.current) ?? snapshot.queue.items[0]
+  const id = entry === undefined ? null : idFromLabel(entry.label)
+  if (id === null) {
+    setState({ error: '队列为空，先在搜索结果里点「＋」加入歌曲' })
+    return
+  }
+  const known = id === null ? undefined : snapshot.songIndex[id.toLowerCase()]
+  setState({ busy: 'play', error: null })
+  try {
+    const result = await api('play', {
+      method: 'POST',
+      body: JSON.stringify({ encryptedId: id, originalId: known?.originalId ?? undefined }),
+    })
+    setState({ busy: null, error: null, notice: result?.message ?? `开始播放：${known?.name ?? '队列曲目'}` })
+    scheduleNoticeClear()
+    await refreshPlayback()
+    await refreshQueue()
   } catch (error) {
     setState({ busy: null, error: error instanceof Error ? error.message : String(error) })
   }
@@ -362,6 +408,34 @@ let noticeTimer: ReturnType<typeof setTimeout> | undefined
 function scheduleNoticeClear(): void {
   if (noticeTimer !== undefined) clearTimeout(noticeTimer)
   noticeTimer = setTimeout(() => setState({ notice: null }), 4000)
+}
+
+/**
+ * Pull the 32-hex encrypted id out of a queue label like
+ * `HEX | 歌曲 ID: HEX`. Case is preserved: the CLI sent uppercase and may be
+ * strict about it.
+ * @param label raw label from the CLI queue.
+ * @returns the hex id as written, or null.
+ */
+function idFromLabel(label: string): string | null {
+  const match = /([0-9a-fA-F]{32})/.exec(label)
+  return match === null ? null : match[1]
+}
+
+/**
+ * Best-effort display name for a queue entry: the plugin remembers the songs
+ * it has seen (search results, explicit plays), because the CLI's queue only
+ * reports ids.
+ * @param label raw label from the CLI queue.
+ * @param songIndex remembered songs.
+ * @returns the song name when known, otherwise a shortened label.
+ */
+function queueDisplayName(label: string, songIndex: Snapshot['songIndex']): string {
+  const raw = idFromLabel(label)
+  const id = raw === null ? null : raw.toLowerCase()
+  if (id !== null && songIndex[id] !== undefined) return songIndex[id].name
+  const cleaned = label.split('|')[0].trim()
+  return cleaned !== '' ? cleaned : label
 }
 
 /**
@@ -673,7 +747,7 @@ function MusicPage() {
             {state.queue.items.map((entry, index) => (
               <div key={index} className={`ncm-queue-row${entry.current ? ' ncm-queue-row-current' : ''}`}>
                 <span style={{ width: 18, textAlign: 'right', color: 'var(--ncm-faint)' }}>{entry.index ?? index + 1}</span>
-                <span className="ncm-queue-label">{entry.label || '(未知曲目)'}</span>
+                <span className="ncm-queue-label">{queueDisplayName(entry.label, state.songIndex)}</span>
                 {entry.current && <span style={{ fontSize: 11 }}>▶</span>}
               </div>
             ))}
@@ -681,7 +755,7 @@ function MusicPage() {
         )}
 
         <div className="ncm-player" style={showSettings ? { display: 'none' } : undefined}>
-          <button className="ncm-play" title={playing ? '暂停' : '播放'} onClick={() => { void runControl(playing ? 'pause' : 'resume') }}>{playing ? '⏸' : '▶'}</button>
+          <button className="ncm-play" title={playing ? '暂停' : '播放'} onClick={() => { void playOrResume() }}>{playing ? '⏸' : '▶'}</button>
           <span className="ncm-state" style={{ marginLeft: 8 }}>{state.notice !== null ? state.notice : describePlayback(current)}</span>
           <button
             className={`ncm-queue-toggle${state.queueOpen ? ' ncm-queue-toggle-active' : ''}`}
