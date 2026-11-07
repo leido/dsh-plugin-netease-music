@@ -205,6 +205,7 @@ async function playSong(song: Song): Promise<void> {
       body: JSON.stringify({ encryptedId: song.encryptedId, originalId: song.originalId }),
     })
     setState({ busy: null, error: null, notice: result?.message ?? `开始播放：${song.name}` })
+    scheduleNoticeClear()
     await refreshPlayback()
   } catch (error) {
     setState({ busy: null, error: error instanceof Error ? error.message : String(error) })
@@ -222,6 +223,7 @@ async function runControl(action: string, value?: number): Promise<void> {
   try {
     const result = await api('control', { method: 'POST', body: JSON.stringify({ action, value }) })
     setState({ busy: null, error: null, notice: result?.message ?? null })
+    scheduleNoticeClear()
     await refreshPlayback()
   } catch (error) {
     setState({ busy: null, error: error instanceof Error ? error.message : String(error) })
@@ -279,10 +281,36 @@ const STATUS_LABELS: Record<string, string> = { playing: '播放中', paused: '�
  * @param playback raw CLI state.
  * @returns one short Chinese status line.
  */
+/**
+ * @param seconds elapsed seconds from the player service.
+ * @returns m:ss clock text.
+ */
+function formatClock(seconds: any): string {
+  const total = Math.max(0, Math.floor(Number(seconds) || 0))
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
+}
+
 function describePlayback(playback: any): string {
   if (playback === null || playback === undefined) return '状态未知'
   const status = STATUS_LABELS[String(playback.status)] ?? String(playback.status ?? '未知')
+  if (playback.status === 'playing' || playback.status === 'paused') {
+    const title = typeof playback.title === 'string' && playback.title !== '' ? ` ${playback.title}` : ''
+    const elapsed = Number.isFinite(Number(playback.position)) && Number(playback.position) > 0 ? ` · ${formatClock(playback.position)}` : ''
+    return `${status}${title}${elapsed}`
+  }
   return playback.queueLength ? `${status} · 队列 ${playback.queueLength}` : status
+}
+
+/** Auto-clear timer for transient notices, so they never mask live state. */
+let noticeTimer: ReturnType<typeof setTimeout> | undefined
+
+/**
+ * Fade a notice after a few seconds; the polled state line takes over again.
+ * @returns void
+ */
+function scheduleNoticeClear(): void {
+  if (noticeTimer !== undefined) clearTimeout(noticeTimer)
+  noticeTimer = setTimeout(() => setState({ notice: null }), 4000)
 }
 
 /**
@@ -482,6 +510,11 @@ function MusicPage() {
   useEffect(() => {
     if (state.status === null && !state.statusLoading) void refreshStatus()
     void refreshPlayback()
+    // The CLI's state is the single source of truth for playback; poll it so
+    // the transport bar keeps up with what the player service is doing,
+    // including songs started elsewhere (Agent tools, another tab).
+    const timer = setInterval(() => { void refreshPlayback() }, 2000)
+    return () => clearInterval(timer)
   }, [])
 
   const current = state.playback?.state ?? state.playback ?? null
@@ -562,7 +595,7 @@ function MusicPage() {
           <button title="下一首" onClick={() => { void runControl('next') }}>⏭</button>
           <button title="音量 -10" onClick={() => { void runControl('volume', Math.max(0, Number(current?.volume ?? 60) - 10)) }}>−</button>
           <button title="音量 +10" onClick={() => { void runControl('volume', Math.min(100, Number(current?.volume ?? 60) + 10)) }}>＋</button>
-          <span className="ncm-state">{state.notice ?? describePlayback(current)}</span>
+          <span className="ncm-state">{state.notice !== null ? state.notice : describePlayback(current)}</span>
         </div>
       </div>
     </div>
